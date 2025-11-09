@@ -428,6 +428,41 @@
         </button>
     </div>
 
+    <!-- 
+        NAME ENTRY MODAL (NAMING FEATURE)
+        The player sees a styled, centered UI window where they can type a name before joining.
+
+        The input and confirm button are handled in JavaScript:
+        - joinMode() opens it
+        - The Confirm button sends `join_mode` message with the chosen name
+    -->
+    <div id="nameModal"
+        style="display:none; position:fixed; top:50%; left:50%;
+                transform:translate(-50%,-50%);
+                background:rgba(14,219,255,0.25);
+                backdrop-filter:blur(12px);
+                border:2px dotted rgba(255,255,255,0.3);
+                padding:30px; border-radius:10px; z-index:1000;
+                text-align:center; color:white; font-family:'Hyperspace',sans-serif;">
+
+    <h3 style="color:#64ffda; margin-bottom:15px;">Name Your Rocket</h3>
+    <input id="rocketNameInput" placeholder="Enter rocket name"
+            style="padding:10px; width:80%; border:none; border-radius:6px;
+                    font-family:'Hyperspace',sans-serif; font-size:14px;
+                    text-align:center; outline:none; margin-bottom:15px;" />
+    <br/>
+    <button id="confirmNameBtn"
+            style="background:rgba(100,255,218,0.2); border:2px solid #64ffda;
+                    border-radius:6px; padding:8px 18px; color:#fff;
+                    font-family:'Hyperspace',sans-serif; cursor:pointer;
+                    transition:all 0.3s ease;">
+        Confirm
+    </button>
+    </div>
+
+
+    <div id="nameLabelsContainer" style="position: absolute; top: 0; left: 0; pointer-events: none; z-index: 300;"></div>
+
     <div id="modelUpload">
         <h4>Upload RL Model</h4>
         <input type="file" id="modelFile" class="fileInput" accept=".zip" onchange="handleModelUpload(event)">
@@ -897,6 +932,21 @@
                 shipColorIndex++;
             }
 
+            // Add a floating name label for this ship
+            const nameLabel = document.createElement("div");
+            nameLabel.id = `label-${shipId}`;
+            nameLabel.textContent = ships[shipId].name || shipId.substring(0, 6);
+            nameLabel.style.position = "absolute";
+            nameLabel.style.color = isYourShip ? "#ffffff" : "#64ffda";
+            nameLabel.style.fontFamily = "Hyperspace, monospace";
+            nameLabel.style.fontSize = "12px";
+            nameLabel.style.textShadow = "0 0 4px black";
+            nameLabel.style.pointerEvents = "none";
+            document.getElementById("nameLabelsContainer").appendChild(nameLabel);
+
+            // Store reference to label
+            ship.nameLabel = nameLabel;
+
             return ship;
         }
 
@@ -904,6 +954,9 @@
             if (ships[shipId]) {
                 if (ships[shipId].trail) {
                     scene.remove(ships[shipId].trail);
+                }
+                if (ships[shipId].nameLabel) {
+                    ships[shipId].nameLabel.remove();
                 }
                 scene.remove(ships[shipId]);
                 delete ships[shipId];
@@ -963,37 +1016,53 @@
         const updateThrottle = 16;
 
         function joinMode(mode) {
-            if (sendMessage("join_mode", { mode: mode })) {
-                currentMode = mode;
-                document.getElementById('mode').textContent = mode.charAt(0).toUpperCase() + mode.slice(1);
+        // Show name modal feature
+        const modal = document.getElementById("nameModal");
+        const input = document.getElementById("rocketNameInput");
+        const button = document.getElementById("confirmNameBtn");
 
-                if (mode === 'manual') {
-                    document.getElementById('joinPanel').style.display = 'none';
-                    document.getElementById('controls').style.display = 'block';
-                    document.getElementById('modelUpload').style.display = 'none';
+        modal.style.display = "block";
+        input.value = "";
+        input.focus();
 
-                    // Initialize with no action
-                    pendingAction = { turn: 0, thrust: 0 };
+        // Remove any previous listeners to prevent duplicates
+        button.onclick = null;
 
-                    // Reset manual stats
-                    manualStats.currentStep = 0;
-                    manualStats.shipState = { x: 0, y: 0, vx: 0, vy: 0 };
-                    manualStats.initialRadius = 0.0;
-                    updateManualStats();
-                } else if (mode === 'model') {
-                    document.getElementById('joinPanel').style.display = 'none';
-                    document.getElementById('controls').style.display = 'none';
-                    // Keep modelUpload visible for stats
-                    document.getElementById('modelUpload').style.display = 'block';
-
-                    // Reset model stats
-                    modelStats.currentStep = 0;
-                    modelStats.shipState = { x: 0, y: 0, vx: 0, vy: 0 };
-                    modelStats.predictedAction = 0.0;
-                    modelStats.initialRadius = 0.0;
-                    updateModelStats();
-                }
+        button.onclick = () => {
+            const name = input.value.trim();
+            if (!name) {
+            alert("Please enter a valid name!");
+            return;
             }
+
+            // Send join message
+            sendMessage("join_mode", { mode: mode, name });
+
+            // Hide modal and restore game panels
+            modal.style.display = "none";
+
+            // Continue with existing UI transitions
+            currentMode = mode;
+            document.getElementById("mode").textContent =
+            mode.charAt(0).toUpperCase() + mode.slice(1);
+
+            if (mode === "manual") {
+            document.getElementById("joinPanel").style.display = "none";
+            document.getElementById("controls").style.display = "block";
+            document.getElementById("modelUpload").style.display = "none";
+
+            pendingAction = { turn: 0, thrust: 0 };
+            manualStats.currentStep = 0;
+            manualStats.shipState = { x: 0, y: 0, vx: 0, vy: 0 };
+            manualStats.initialRadius = 0.0;
+            updateManualStats();
+
+            } else if (mode === "model") {
+            document.getElementById("joinPanel").style.display = "none";
+            document.getElementById("controls").style.display = "none";
+            document.getElementById("modelUpload").style.display = "block";
+            }
+        };
         }
 
         function updateLeaderboard(leaderboardData) {
@@ -1244,6 +1313,9 @@
                 }
 
                 const ship = ships[shipId];
+                if (state.name && ship.nameLabel) {
+                    ship.nameLabel.textContent = state.name;
+                }
                 ship.position.set(state.x * 2, state.y * 2, 0);
                 console.log('Ship position set to:', state.x * 2, state.y * 2);
 
@@ -1378,6 +1450,22 @@
             lastTime = currentTime;
 
             renderer.render(scene, camera);
+
+            // Update name label positions
+            for (const [shipId, ship] of Object.entries(ships)) {
+                if (!ship.nameLabel) continue;
+
+                // Project 3D position to 2D screen space
+                const vector = new THREE.Vector3();
+                vector.copy(ship.position);
+                vector.project(camera);
+
+                const x = (vector.x * 0.5 + 0.5) * window.innerWidth;
+                const y = (-vector.y * 0.5 + 0.5) * window.innerHeight;
+
+                ship.nameLabel.style.left = `${x}px`;
+                ship.nameLabel.style.top = `${y - 15}px`; // offset slightly above the ship
+            }
         }
 
         // Handle window resize
