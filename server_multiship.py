@@ -4,6 +4,7 @@ import uuid  # For generating unique identifiers for each client
 import numpy as np  # For numerical computations (physics calculations)
 import torch  # For machine learning model operations
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect  # Web framework for real-time communication
+from fastapi.responses import FileResponse  # for serving files
 from fastapi.middleware.cors import CORSMiddleware  # Allow cross-origin requests from frontend
 from stable_baselines3 import PPO  # Pre-trained reinforcement learning model
 from environment import MultiShipOrbitalEnvironment  # Custom physics environment
@@ -448,6 +449,11 @@ async def stop_simulation():
         remove_baseline_ship()
         print("Global simulation loop stopped")
 
+# serve index.html
+@app.get("/")
+async def read_index():
+    return FileResponse('index.html')
+
 ######################## WEBSOCKET ENDPOINT ########################
 # WebSocket endpoint that handles individual client connections
 @app.websocket("/ws")
@@ -757,5 +763,4 @@ async def shutdown_event():
 ######################## RUN SERVER ########################
 if __name__ == "__main__":
     import uvicorn  # ASGI server for running FastAPI
-    uvicorn.run(app, host="0.0.0.0", port=5501)  # Run server on all interfaces, port 5500 
-    
+    uvicorn.run(app, host="0.0.0.0", port=5501)

@@ -1,0 +1,26 @@
+# Git
+.git
+.gitignore
+
+# Docker
+Dockerfile
+.dockerignore
+
+# Python virtual environment
+grav-nav-env/
+venv/
+*.pyc
+__pycache__/
+
+# IDE configuration
+.vscode/
+.idea/
+
+# Exclude training/testing data from the models directory.
+# We will only copy the necessary final model file.
+models/**/testing/
+models/**/training/
+
+# Operating system files
+.DS_Store
+Thumbs.db

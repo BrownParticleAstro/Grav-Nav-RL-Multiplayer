@@ -1,0 +1,9 @@
+version: '3.8'
+
+services:
+  grav-nav-server:
+    build: .
+    image: grav-nav-rl-server
+    ports:
+      - "5501:5501"
+    restart: unless-stopped
