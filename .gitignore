@@ -1,0 +1,18 @@
+# =============== General Ignores ================
+
+# Python venv
+grav-nav-env/
+venv/
+
+# Compiled/cache files
+*.pyc
+__pycache__/
+
+# Ignore IDE / OS files
+.DS_Store
+.vscode/
+.idea/
+
+# Ignore large training & testing data files
+models/**/testing/
+models/**/training/
