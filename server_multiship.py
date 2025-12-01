@@ -9,12 +9,37 @@ from fastapi.middleware.cors import CORSMiddleware  # Allow cross-origin request
 from stable_baselines3 import PPO  # Pre-trained reinforcement learning model
 from environment import MultiShipOrbitalEnvironment  # Custom physics environment
 
+# Imports below for functionality having server accessible from all devices on same network
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+import os
+
 ######################## INITIALIZE WEBAPP & WEBSOCKET CONNECTIONS ########################
 # Create a lock to prevent race conditions when multiple clients modify shared data simultaneously
 clients_lock = asyncio.Lock()
 
 # Initialize the FastAPI web application
 app = FastAPI()
+
+# Determine the absolute path to the "static" directory (where index.html and other front-end files live)
+static_dir = os.path.join(os.path.dirname(__file__), "static")
+
+# Check if the static directory actually exists
+if os.path.exists(static_dir):
+    # Mount the "static" folder so FastAPI can serve files from it under the URL path /static
+    # Example: /static/index.html, /static/fonts/Hyperspace.otf, etc.
+    app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
+    # Define a route for the root URL ("/")
+    # When someone visits http://localhost:5501/ the server responds by sending index.html
+    @app.get("/")
+    async def serve_index():
+        # Send back the main HTML page from the static directory
+        return FileResponse(os.path.join(static_dir, "index.html"))
+
+else:
+    # If the static folder is missing, print a warning so the developer knows something is wrong
+    print(f"Warning: static directory not found at {static_dir}")
 
 # Configure CORS to allow the frontend (running on different port) to connect to this server
 app.add_middleware(
@@ -365,7 +390,9 @@ async def global_simulation_loop():
                     try:
                         # Prepare payload with client-specific data
                         payload = {
-                            "ships": states,  # Current state of all ships
+                            # "ships": states,  # Current state of all ships
+                            # Get current state of all ships and their names
+                            "ships": {sid: {**state, "name": leaderboard.get(sid, {}).get("name", sid[:8])} for sid, state in env.get_states().items()},
                             "your_ship_id": client.get('ship_id'),  # This client's ship ID
                             "trail_history": trail_history,  # Historical trail data
                             "leaderboard": top_leaderboard,  # Current leaderboard
@@ -513,22 +540,35 @@ async def websocket_endpoint(websocket: WebSocket):
                 # Handle mode change requests (observe -> manual/model)
                 if message_type == "join_mode":
                     mode = payload.get("mode")  # Which mode to switch to
+                    name = payload.get("name", "Anonymous").strip() # Read player's name
+                    client = clients.get(client_id)
                     
                     # Prevent race conditions during mode change
-                    async with clients_lock:  
+                    async with clients_lock:
+                        # If this client already has a ship, just update the name and skip new creation
+                        if client and client.get("ship_id"):
+                            ship_id = client["ship_id"]
+                            if ship_id in leaderboard:
+                                leaderboard[ship_id]["name"] = name
+                                print(f"[RENAME] {ship_id} is now '{name}'")
+                            else:
+                                add_to_leaderboard(ship_id, name)
+                            continue # Skip ship creation
+
                         if mode == "manual":
                             # Manual control mode: create ship that responds to arrow keys
                             # Generate unique ship ID
-                            ship_id = str(uuid.uuid4()) 
-                            env.add_ship(ship_id, control_type='manual') 
-                            add_to_leaderboard(ship_id, f"Manual {ship_id[:8]}")
+                            ship_id = str(uuid.uuid4())
+                            env.add_ship(ship_id, control_type='manual')
+                            add_to_leaderboard(ship_id, name or f"Manual {ship_id[:8]}")
 
                             # Update client metadata
                             clients[client_id] = {
                                 "ws": websocket, 
                                 "type": "manual",  # Manual control type
                                 "ship_id": ship_id,  # This client's ship ID
-                                "pending_action": {'turn': 0.0, 'thrust': 0.0}  # Initialize action
+                                "pending_action": {'turn': 0.0, 'thrust': 0.0}, # Initialize action
+                                "name": name
                             }
 
                             # Send confirmation to client
@@ -542,6 +582,7 @@ async def websocket_endpoint(websocket: WebSocket):
                                 client_id=client_id
                             )
                             await websocket.send_json(confirmation_message)
+                            print(f"[JOIN] {name} joined as {ship_id} ({mode})")
                             
                         elif mode == "model":
                             # Model control mode: wait for model upload before creating ship
@@ -553,7 +594,8 @@ async def websocket_endpoint(websocket: WebSocket):
                                 "type": "model",  # Model control type
                                 "ship_id": None,  # No ship until model is uploaded
                                 "model": None,  # No model loaded yet - client will upload
-                                "model_loaded": False
+                                "model_loaded": False,
+                                "name": name
                             }
                             # Send confirmation to client - request model upload
                             confirmation_message = create_message(
