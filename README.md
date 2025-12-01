@@ -2,9 +2,9 @@
 
 Brown CPFU Vers. 8.28.25
 
-## A Fork of https://github.com/BrownParticleAstro/Grav-Nav-RL.git but includes multiship orbital environment & multiplayer game using authoritative server-client setup.
+A Fork of https://github.com/BrownParticleAstro/Grav-Nav-RL.git but includes multiship orbital environment & multiplayer game using authoritative server-client setup.
 
-This project simulates 2D orbital maneuvers using **Reinforcement Learning (PPO)** and provides a real-time multiplayer experience. Players can control their ships manually or deploy a trained AI model to compete for the longest survival time.
+This project simulates 2D orbital maneuvers via RL and provides a real-time multiplayer experience. Players can control their ships manually or deploy a trained AI model to compete for the longest survival time.
 
 ---
 
@@ -165,10 +165,6 @@ All messages follow a standard header/payload format.
 
 ## 🛰️ Single-Player Simulation Project
 
-This repository also contains the original single-ship reinforcement learning framework.
-
-### 🌟 Overview
-
 The original goal was to simulate spacecraft orbital control by training a PPO model to pilot a spacecraft, achieving stable orbits with minimal fuel cost.
 
 **Core features include:**
@@ -193,8 +189,6 @@ The original goal was to simulate spacecraft orbital control by training a PPO m
 | **`hohman_example.py`**       | Demonstrates a Hohmann transfer orbit, a classic two-burn maneuver to move between circular orbits efficiently.                                                                                                         |
 
 ---
-
-## 🚀 Single-Player Example Usage
 
 ### 🔄 Training
 
@@ -223,7 +217,3 @@ Run `hohman_example.py` to see a demonstration of a classical Hohmann transfer o
 ```bash
 python hohman_example.py
 ```
-
----
-
-Enjoy experimenting with the orbital environment! 🌍✨
