@@ -629,6 +629,32 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script>
         //---------------------------------- SCENE SETUP ----------------------------------
+
+        //---------------------------------- ORBIT RINGS ----------------------------------
+        function addOrbitRings() {
+            const ringMaterial = new THREE.LineBasicMaterial({
+                color: 0x3a88ff,
+                transparent: true,
+                opacity: 0.25
+            });
+
+            const radii = [0.5, 1.0, 1.5, 2.0]; // choose any radii you want to visualize
+
+            radii.forEach(r => {
+                const points = [];
+
+                const segments = 128;
+                for (let i = 0; i <= segments; i++) {
+                    const angle = (i / segments) * 2 * Math.PI;
+                    points.push(new THREE.Vector3(Math.cos(angle) * r * 2, Math.sin(angle) * r * 2, 0));
+                }
+
+                const geometry = new THREE.BufferGeometry().setFromPoints(points);
+                const circle = new THREE.LineLoop(geometry, ringMaterial);
+                scene.add(circle);
+            });
+        }
+
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x0a0a0a);
 
@@ -638,6 +664,7 @@
         document.body.appendChild(renderer.domElement);
 
         // Central mass (star) - solid yellow ball
+        addOrbitRings();
         const starGeometry = new THREE.SphereGeometry(0.4, 16, 16);
         const starMaterial = new THREE.MeshBasicMaterial({
             color: 0xffd700
