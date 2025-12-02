@@ -28,6 +28,7 @@ a2 = None
 hohmann_ready = False
 cached_state = None
 my_ship_id = None
+burn_phase = 0
 
 def compute_radius(x, y):
     return math.sqrt(x*x + y*y)
@@ -89,9 +90,10 @@ def initialize_hohmann(x, y, vx, vy):
 
 
 def choose_thrust():
-    global first_burn_applied, second_burn_applied
+    global first_burn_applied, second_burn_applied, burn_phase
 
     if cached_state is None:
+        burn_phase = 0
         return 0.0
 
     x = cached_state["x"]
@@ -106,6 +108,7 @@ def choose_thrust():
 
     # Phase 0: Initialize Hohmann from first real state
     if not hohmann_ready:
+        burn_phase = 0
         initialize_hohmann(x, y, vx, vy)
         # don't thrust on the same tick, just wait for next tick
         return 0.0
@@ -113,6 +116,7 @@ def choose_thrust():
     # Phase 1: Apply first burn to enter transfer orbit
     if not first_burn_applied:
         first_burn_applied = True
+        burn_phase = 1
         print(f"[{tick}] FIRST BURN at r={r:.4f}, thrust={a1:.4f}")
         return a1
 
@@ -131,7 +135,7 @@ def choose_thrust():
         sign_flip = (prev_vr > 0 and v_rad < 0) or \
                     (prev_vr < 0 and v_rad > 0)
 
-        if sign_flip and near_target:
+        if sign_flip: #and near_target:
             # Phase 3: Apply second burn to circularize at destination orbit
             # Calculate the actual delta-v needed based on current velocity
             # This accounts for any deviations from the ideal transfer orbit
@@ -139,18 +143,19 @@ def choose_thrust():
             delta_v2_actual = v_circular_target - v_tan
             a_2_actual = delta_v2_actual / dt
 
+            burn_phase = 2
             print(f"[{tick}] SECOND BURN at x={x:.4f}, y={y:.4f}")
             print(f"    dv2_actual={delta_v2_actual:.5f}, thrust={a_2_actual:.4f}")
             second_burn_applied = True
             return a_2_actual
 
         # Continue coasting
+        burn_phase = 0
         return 0.0
 
     # Phase 3: After both burns, continue coasting in circular orbit
+    burn_phase = 0
     return 0.0
-
-
 
 async def send_action(ws, tick, thrust):
     msg = {
