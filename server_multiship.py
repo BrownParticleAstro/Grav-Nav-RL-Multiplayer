@@ -24,11 +24,18 @@ app = FastAPI()
 # Determine the absolute path to the "static" directory (where index.html and other front-end files live)
 static_dir = os.path.join(os.path.dirname(__file__), "static")
 
+# Determine path to "fonts" directory
+fonts_dir = os.path.join(os.path.dirname(__file__), "fonts")
+
 # Check if the static directory actually exists
 if os.path.exists(static_dir):
     # Mount the "static" folder so FastAPI can serve files from it under the URL path /static
     # Example: /static/index.html, /static/fonts/Hyperspace.otf, etc.
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
+    # Serve the fonts directory at the "/fonts" URL path
+    if os.path.exists(fonts_dir):
+        app.mount("/fonts", StaticFiles(directory=fonts_dir), name="fonts")
 
     # Define a route for the root URL ("/")
     # When someone visits http://localhost:5501/ the server responds by sending index.html
@@ -455,7 +462,7 @@ async def start_simulation():
     if not simulation_running:  # Only start if not already running
         simulation_running = True  # Set flag to start simulation
         # Add baseline ship when simulation starts (first client joins)
-        add_baseline_ship()
+        # add_baseline_ship()
         # Create async task to run the simulation loop
         simulation_task = asyncio.create_task(global_simulation_loop())
         print("Global simulation loop started with baseline ship")
@@ -718,9 +725,9 @@ async def websocket_endpoint(websocket: WebSocket):
                                 action_received_time = asyncio.get_event_loop().time()
                                 latency = (action_received_time - last_action_request_time) * 1000  # Convert to milliseconds
                                 
-                                print(f"ACK Manual action at tick {message_tick}: Action request sent {last_action_request_time:.6f}, Action received {action_received_time:.6f}, Latency {latency:.2f}ms")
-                            else:
-                                print(f"NACK Manual action from client {client_id} - tick {message_tick} is {tick_status}")
+                                # print(f"ACK Manual action at tick {message_tick}: Action request sent {last_action_request_time:.6f}, Action received {action_received_time:.6f}, Latency {latency:.2f}ms")
+                            # else:
+                                # print(f"NACK Manual action from client {client_id} - tick {message_tick} is {tick_status}")
                 
                 # Handle cancel control request (return to observe mode)
                 elif message_type == "cancel_control":

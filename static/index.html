@@ -428,14 +428,7 @@
         </button>
     </div>
 
-    <!-- 
-        NAME ENTRY MODAL (NAMING FEATURE)
-        The player sees a styled, centered UI window where they can type a name before joining.
-
-        The input and confirm button are handled in JavaScript:
-        - joinMode() opens it
-        - The Confirm button sends `join_mode` message with the chosen name
-    -->
+    <!-- NAME ENTRY MODAL -->
     <div id="nameModal"
         style="display:none; position:fixed; top:50%; left:50%;
                 transform:translate(-50%,-50%);
@@ -459,7 +452,6 @@
         Confirm
     </button>
     </div>
-
 
     <div id="nameLabelsContainer" style="position: absolute; top: 0; left: 0; pointer-events: none; z-index: 300;"></div>
 
@@ -645,12 +637,47 @@
         const star = new THREE.Mesh(starGeometry, starMaterial);
         scene.add(star);
 
+        // --- ADD ORBITAL RINGS (Red/Orange Bands) ---
+        // Range: r=0.5 to r=10.0 in increments of 0.5
+        for (let r = 0.5; r <= 10.0; r += 0.5) {
+            // Choose color: 1.0 is Orange (Target), others are Red
+            // Use epsilon comparison for float equality
+            const isTarget = Math.abs(r - 1.0) < 0.001;
+            const color = isTarget ? 0xffa500 : 0xff0000;
+            const opacity = isTarget ? 0.8 : 0.3; // Make target brighter
+
+            // Visual radius scale (physics x2) - standard for this visualization
+            const visualR = r * 2;
+
+            // Create Ring
+            const ringGeo = new THREE.RingGeometry(visualR - 0.01, visualR + 0.01, 64);
+            const ringMat = new THREE.MeshBasicMaterial({
+                color: color,
+                side: THREE.DoubleSide,
+                transparent: true,
+                opacity: opacity,
+                depthWrite: false // Prevent z-fighting with trails
+            });
+            const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+            
+            // Rotate flat on XY plane (RingGeometry is XY by default, so actually no rotation needed 
+            // if we are looking down Z, but if needed we can adjust)
+            // Default RingGeometry lies in XY plane.
+            
+            scene.add(ringMesh);
+        }
+        // ---------------------------------------------
+
         // Ship objects - solid colors
         const ships = {};
         const shipColors = [0x64ffda, 0xff6b6b, 0x4ecdc4, 0x45b7d1, 0x96ceb4, 0xfeca57];
         let shipColorIndex = 0;
         let lastTrailUpdate = 0;
         const trailUpdateInterval = 700;
+        
+        // Globals for Hohmann Visualization
+        let hohmannInitRing = null;
+        let hohmannTargetRing = null;
 
         //---------------------------------- TICK-BASED NETWORKING ----------------------------------
         let currentTick = 0;  // Track the current tick from server
@@ -912,6 +939,33 @@
                 ship.rotation.z = 0; // Point along positive Y-axis (upward)
             }
 
+            // --- VISUAL UPGRADE: Add Thrust Plume ---
+            // Create a cone for the engine plume
+            // Radius=0.08, Height=0.3
+            const plumeGeometry = new THREE.ConeGeometry(0.08, 0.3, 8); 
+            // Shift the geometry so it scales from the top, not the center
+            plumeGeometry.translate(0, -0.15, 0); 
+            
+            const plumeMaterial = new THREE.MeshBasicMaterial({
+                color: 0xff4500, // Orange-Red fire color
+                transparent: true,
+                opacity: 0.8
+            });
+            const plume = new THREE.Mesh(plumeGeometry, plumeMaterial);
+            
+            // Position plume at the bottom of the ship (tail)
+            plume.position.y = -0.15; 
+            // Rotate 180 deg so cone points down
+            plume.rotation.x = Math.PI; 
+            
+            // Hide initially
+            plume.visible = false;
+            
+            // Attach plume to ship
+            ship.add(plume);
+            ship.plume = plume; 
+            // ----------------------------------------
+
             // Add ship trail
             const trailGeometry = new THREE.BufferGeometry();
             const trailMaterial = new THREE.LineBasicMaterial({
@@ -1016,53 +1070,53 @@
         const updateThrottle = 16;
 
         function joinMode(mode) {
-        // Show name modal feature
-        const modal = document.getElementById("nameModal");
-        const input = document.getElementById("rocketNameInput");
-        const button = document.getElementById("confirmNameBtn");
+            // Show name modal feature
+            const modal = document.getElementById("nameModal");
+            const input = document.getElementById("rocketNameInput");
+            const button = document.getElementById("confirmNameBtn");
 
-        modal.style.display = "block";
-        input.value = "";
-        input.focus();
+            modal.style.display = "block";
+            input.value = "";
+            input.focus();
 
-        // Remove any previous listeners to prevent duplicates
-        button.onclick = null;
+            // Remove any previous listeners to prevent duplicates
+            button.onclick = null;
 
-        button.onclick = () => {
-            const name = input.value.trim();
-            if (!name) {
-            alert("Please enter a valid name!");
-            return;
-            }
+            button.onclick = () => {
+                const name = input.value.trim();
+                if (!name) {
+                alert("Please enter a valid name!");
+                return;
+                }
 
-            // Send join message
-            sendMessage("join_mode", { mode: mode, name });
+                // Send join message
+                sendMessage("join_mode", { mode: mode, name });
 
-            // Hide modal and restore game panels
-            modal.style.display = "none";
+                // Hide modal and restore game panels
+                modal.style.display = "none";
 
-            // Continue with existing UI transitions
-            currentMode = mode;
-            document.getElementById("mode").textContent =
-            mode.charAt(0).toUpperCase() + mode.slice(1);
+                // Continue with existing UI transitions
+                currentMode = mode;
+                document.getElementById("mode").textContent =
+                mode.charAt(0).toUpperCase() + mode.slice(1);
 
-            if (mode === "manual") {
-            document.getElementById("joinPanel").style.display = "none";
-            document.getElementById("controls").style.display = "block";
-            document.getElementById("modelUpload").style.display = "none";
+                if (mode === "manual") {
+                document.getElementById("joinPanel").style.display = "none";
+                document.getElementById("controls").style.display = "block";
+                document.getElementById("modelUpload").style.display = "none";
 
-            pendingAction = { turn: 0, thrust: 0 };
-            manualStats.currentStep = 0;
-            manualStats.shipState = { x: 0, y: 0, vx: 0, vy: 0 };
-            manualStats.initialRadius = 0.0;
-            updateManualStats();
+                pendingAction = { turn: 0, thrust: 0 };
+                manualStats.currentStep = 0;
+                manualStats.shipState = { x: 0, y: 0, vx: 0, vy: 0 };
+                manualStats.initialRadius = 0.0;
+                updateManualStats();
 
-            } else if (mode === "model") {
-            document.getElementById("joinPanel").style.display = "none";
-            document.getElementById("controls").style.display = "none";
-            document.getElementById("modelUpload").style.display = "block";
-            }
-        };
+                } else if (mode === "model") {
+                document.getElementById("joinPanel").style.display = "none";
+                document.getElementById("controls").style.display = "none";
+                document.getElementById("modelUpload").style.display = "block";
+                }
+            };
         }
 
         function updateLeaderboard(leaderboardData) {
@@ -1299,14 +1353,12 @@
         function updateShips(shipStates, yourShipId, trailHistory) {
             document.getElementById('shipCount').textContent = Object.keys(shipStates).length;
 
-            // Debug: log ship states
-            console.log('Ship states received:', shipStates);
-            console.log('Your ship ID:', yourShipId);
+            // Flag to check if we found the Hohmann bot
+            let hohmannShipFound = false;
 
             // Update each ship
             for (const [shipId, state] of Object.entries(shipStates)) {
-                console.log('Processing ship:', shipId, 'State:', state);
-
+                
                 if (!ships[shipId]) {
                     console.log('Creating new ship:', shipId);
                     createShip(shipId, shipId === yourShipId);
@@ -1317,13 +1369,57 @@
                     ship.nameLabel.textContent = state.name;
                 }
                 ship.position.set(state.x * 2, state.y * 2, 0);
-                console.log('Ship position set to:', state.x * 2, state.y * 2);
-
+                
                 // Update baseline ship velocity and distance display
                 if (shipId === 'baseline_ship') {
                     updateBaselineVelocity(state.vx, state.vy);
                     updateBaselineDistance(state.x, state.y);
                 }
+
+                // --- VISUAL UPGRADE: Hohmann Rings ---
+                // Check if this ship is the PythonHohmann bot
+                if (state.name && state.name.toLowerCase().includes("hohmann")) {
+                    hohmannShipFound = true;
+                    
+                    // 1. Create Initial Radius Ring (Red, Thinner)
+                    if (!hohmannInitRing && state.init_r) {
+                        const r = state.init_r;
+                        const visualR = r * 2; // Convert physics radius to visual radius
+
+                        if (visualR > 0) {
+                            // Reduced thickness: +/- 0.02 instead of 0.05
+                            const geometry = new THREE.RingGeometry(visualR - 0.02, visualR + 0.02, 64);
+                            const material = new THREE.MeshBasicMaterial({ 
+                                color: 0xff0000, // RED
+                                side: THREE.DoubleSide, 
+                                transparent: true, 
+                                opacity: 0.8,
+                                depthTest: false 
+                            });
+                            hohmannInitRing = new THREE.Mesh(geometry, material);
+                            scene.add(hohmannInitRing);
+                        }
+                    }
+
+                    // 2. Create Target Radius Ring (Orange, Thinner) at r=1.0
+                    if (!hohmannTargetRing) {
+                        const r = 1.0; 
+                        const visualR = r * 2; 
+
+                        // Reduced thickness: +/- 0.02 instead of 0.05
+                        const geometry = new THREE.RingGeometry(visualR - 0.02, visualR + 0.02, 64);
+                        const material = new THREE.MeshBasicMaterial({ 
+                            color: 0xffa500, // ORANGE (0xffa500)
+                            side: THREE.DoubleSide, 
+                            transparent: true, 
+                            opacity: 0.8,
+                            depthTest: false 
+                        });
+                        hohmannTargetRing = new THREE.Mesh(geometry, material);
+                        scene.add(hohmannTargetRing);
+                    }
+                }
+                // -------------------------------------
 
                 // Add current position to trail immediately
                 if (!ship.trailPoints) {
@@ -1348,13 +1444,11 @@
                     if (Math.abs(vx) > 0.01 || Math.abs(vy) > 0.01) {
                         const angle = Math.atan2(vy, vx);
                         ship.rotation.z = angle - Math.PI / 2;
-                        console.log('Baseline ship rotation from velocity:', angle - Math.PI / 2, 'Velocity:', vx, vy);
                     }
                 } else if (state.heading !== undefined && state.thrust !== undefined) {
                     // Manual ship: point in heading direction (where ship is facing)
                     const heading = state.heading;
                     ship.rotation.z = heading - Math.PI / 2; // Subtract 90 degrees to align with heading
-                    console.log('Manual ship rotation:', heading - Math.PI / 2);
                 } else {
                     // AI client ship: point in direction based on velocity
                     const vx = state.vx;
@@ -1362,7 +1456,6 @@
                     if (Math.abs(vx) > 0.01 || Math.abs(vy) > 0.01) {
                         const angle = Math.atan2(vy, vx);
                         ship.rotation.z = angle - Math.PI / 2;
-                        console.log('AI client ship rotation from velocity:', angle - Math.PI / 2, 'Velocity:', vx, vy);
                     }
                 }
 
@@ -1379,6 +1472,23 @@
                     ship.material.color.setHex(0x64ffda);
                     ship.scale.setScalar(1.0);
                 }
+
+                // Update Plume Visibility
+                if (ship.plume) {
+                    // Check for thrust in both AI (tangential_thrust) and Manual (thrust)
+                    // Note: tangential_thrust can be negative for AI, so check absolute value
+                    // Manual thrust is usually just a magnitude > 0
+                    const isThrusting = (state.thrust && state.thrust > 0.01) ||
+                                        (state.tangential_thrust && Math.abs(state.tangential_thrust) > 0.01);
+                    
+                    ship.plume.visible = !!isThrusting;
+                }
+            }
+
+            // Clean up Hohmann Rings if bot is gone
+            if (!hohmannShipFound) {
+                if (hohmannInitRing) { scene.remove(hohmannInitRing); hohmannInitRing = null; }
+                if (hohmannTargetRing) { scene.remove(hohmannTargetRing); hohmannTargetRing = null; }
             }
 
             // Remove ships that are no longer in the state

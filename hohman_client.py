@@ -6,93 +6,111 @@ import time
 import math
 import numpy as np
 
-# Note that in order for this to run without external influence, we need to not have the
-# Baseline AI ship in the environment
-
-WS_URL = "ws://10.37.117.236:5500/ws"
+# Configuration
+WS_URL = "ws://localhost:5500/ws"
 SHIP_NAME = "PythonHohmann"
+TARGET_RADIUS = 1.0 
 
-# Tolerance values for detecting when we're at the target radius and at an apsis
-TARGET_RADIUS_TOLERANCE = 0.0005  # How close we need to be to target radius to trigger second burn
-APSIS_TOLERANCE = 0.0005  # How close we need to be to periapsis/apoapsis
-
+# Constants
 GM = 1.0
-dt = 0.01
-TARGET_RADIUS = 2.0 # note that the code currently only works if target radius is bigger than current radius
+dt = 1.0/60.0 # 60Hz server tick rate
 
+# State Globals
 first_burn_applied = False
 second_burn_applied = False
-a1 = None
-a2 = None
 
-hohmann_ready = False
 cached_state = None
 my_ship_id = None
+
+# ------------------------------------------------------------------
+# Math Helpers
+# ------------------------------------------------------------------
 
 def compute_radius(x, y):
     return math.sqrt(x*x + y*y)
 
-def compute_tangential_velocity(x, y, vx, vy):
-    r = compute_radius(x,y)
-    return (x*vy - y*vx)/r if r > 1e-5 else 0
+def get_orbit_direction(x, y, vx, vy):
+    """Returns 1 for CCW, -1 for CW"""
+    cross_product = x*vy - y*vx
+    return 1 if cross_product >= 0 else -1
 
-
-def initialize_hohmann(x, y, vx, vy):
-    global hohmann_ready, a1, a2
-
-    r1 = compute_radius(x, y)
-    r2 = TARGET_RADIUS
-    v_tangential_init = compute_tangential_velocity(x, y, vx, vy)
-
-    # Determine transfer direction: inward (to smaller radius) or outward (to larger radius)
-    going_inward = r1 > r2
-
-    # Calculate semi-major axis of the Hohmann transfer ellipse
-    # For a Hohmann transfer, the semi-major axis is the average of the two radii
-    a_transfer = (r1 + r2) / 2
-
-    # Calculate velocities needed for the transfer orbit using vis-viva equation
-    # v = sqrt(GM * (2/r - 1/a)) where r is current radius and a is semi-major axis
-    if going_inward:
-        # Velocity at periapsis (r1) of transfer ellipse
-        v1_transfer = np.sqrt(GM * (2/r1 - 1/a_transfer))
-        # Velocity at apoapsis (r2) of transfer ellipse
-        v2_transfer = np.sqrt(GM * (2/r2 - 1/a_transfer))
-        
-        # Delta-v required for first burn: speed up to enter transfer orbit
-        delta_v1 = v1_transfer - v_tangential_init
-        # Delta-v required for second burn: speed up to circularize at destination
-        delta_v2 = np.sqrt(GM / r2) - v2_transfer
+def calculate_maneuver_vector(x, y, vx, vy, target_speed):
+    """
+    Calculates the thrust and heading required to achieve a target speed
+    in the purely tangential direction (killing radial velocity).
+    """
+    r = math.sqrt(x*x + y*y)
+    
+    # 1. Determine tangential unit vector based on current orbit direction
+    direction = get_orbit_direction(x, y, vx, vy)
+    
+    # Normalized position vector
+    nx, ny = x/r, y/r
+    
+    # Tangent vector (rotated 90 degrees)
+    # CCW: (-y, x), CW: (y, -x)
+    if direction == 1:
+        tx, ty = -ny, nx
     else:
-        # Same calculations for outward transfer
-        v1_transfer = np.sqrt(GM * (2/r1 - 1/a_transfer))
-        v2_transfer = np.sqrt(GM * (2/r2 - 1/a_transfer))
+        tx, ty = ny, -nx
         
-        # Delta-v required for first burn: speed up to enter transfer orbit
-        delta_v1 = v1_transfer - v_tangential_init
-        # Delta-v required for second burn: slow down to circularize at destination
-        delta_v2 = np.sqrt(GM / r2) - v2_transfer
+    # 2. Construct Target Velocity Vector
+    target_vx = tx * target_speed
+    target_vy = ty * target_speed
+    
+    # 3. Calculate Delta-V Vector
+    dv_x = target_vx - vx
+    dv_y = target_vy - vy
+    
+    # 4. Convert to Thrust and Heading
+    dv_mag = math.sqrt(dv_x**2 + dv_y**2)
+    thrust = dv_mag / dt
+    heading = math.atan2(dv_y, dv_x)
+    
+    return thrust, heading, dv_mag
 
-    # Convert delta-v to acceleration (delta-v per timestep)
-    a1 = delta_v1 / dt
-    a2 = delta_v2 / dt
+def calculate_orbital_elements(x, y, vx, vy):
+    """Calculates specific energy, semi-major axis, and eccentricity"""
+    r = math.sqrt(x*x + y*y)
+    v2 = vx*vx + vy*vy
+    
+    # Specific Energy
+    E = v2/2 - GM/r
+    
+    # Semi-major axis
+    # E = -GM / 2a  => a = -GM / 2E
+    if abs(E) < 1e-6:
+        a = float('inf') # Parabolic
+    else:
+        a = -GM / (2*E)
+        
+    # Angular Momentum
+    h_vec = x*vy - y*vx
+    h2 = h_vec**2
+    
+    # Eccentricity
+    # h^2 = GM * a * (1 - e^2) => e = sqrt(1 - h^2/(GM*a))
+    # Be careful with floating point, clip to 0
+    term = h2 / (GM * a)
+    e = 0.0
+    if term <= 1.0:
+        e = math.sqrt(1.0 - term)
+    
+    return E, a, e
 
-    print("\n HOHMANN INITIALIZED")
-    print(f"r1   = {r1:.4f}")
-    print(f"delta_v1  = {delta_v1:.6f}")
-    print(f"delta_v2  = {delta_v2:.6f}")
-    print(f"a1   = {a1:.6f}")
-    print(f"a2   = {a2:.6f}")
-    print("======================\n")
+# ------------------------------------------------------------------
+# Logic Core
+# ------------------------------------------------------------------
 
-    hohmann_ready = True
-
-
-def choose_thrust():
+def choose_action():
+    """
+    Decides the maneuver based on flight phase.
+    Returns tuple: (thrust_magnitude, target_heading)
+    """
     global first_burn_applied, second_burn_applied
 
     if cached_state is None:
-        return 0.0
+        return 0.0, 0.0
 
     x = cached_state["x"]
     y = cached_state["y"]
@@ -101,58 +119,88 @@ def choose_thrust():
     tick = cached_state["tick"]
 
     r = compute_radius(x,y)
-    v_tan = compute_tangential_velocity(x,y,vx,vy)
+    
+    # Radial Velocity
     v_rad = (x*vx + y*vy) / r if r > 1e-5 else 0
 
-    # Phase 0: Initialize Hohmann from first real state
-    if not hohmann_ready:
-        initialize_hohmann(x, y, vx, vy)
-        # don't thrust on the same tick, just wait for next tick
-        return 0.0
+    # --- Telemetry Logging (Every ~1 second) ---
+    if tick % 60 == 0:
+        E, a, e = calculate_orbital_elements(x, y, vx, vy)
+        print(f"[DEBUG T={tick}] r={r:.4f}, v_rad={v_rad:.4f}, Energy={E:.4f}, a={a:.4f}, e={e:.4f}")
 
-    # Phase 1: Apply first burn to enter transfer orbit
+    # --- Phase 1: Injection Burn (Start Transfer) ---
     if not first_burn_applied:
+        
+        # Calculate Hohmann Transfer parameters
+        r1 = r
+        r2 = TARGET_RADIUS
+        a_transfer = (r1 + r2) / 2
+        
+        # Vis-viva equation for velocity at periapsis of transfer orbit
+        # v = sqrt(GM * (2/r - 1/a))
+        v_transfer_req = math.sqrt(GM * (2/r1 - 1/a_transfer))
+        
+        # Calculate Vector Burn
+        thrust, heading, dv = calculate_maneuver_vector(x, y, vx, vy, v_transfer_req)
+        
         first_burn_applied = True
-        print(f"[{tick}] FIRST BURN at r={r:.4f}, thrust={a1:.4f}")
-        return a1
+        print(f"[{tick}] BURN 1 (Injection): r={r:.4f}")
+        print(f"    Target V: {v_transfer_req:.4f}")
+        print(f"    Vector DV: {dv:.4f}, Thrust: {thrust:.4f}")
+        
+        return thrust, heading
 
-    # detect apsis
-    prev_v_rad = getattr(choose_thrust, "prev_v_rad", v_rad)
-    choose_thrust.prev_v_rad = v_rad
+    # Detect Apsis (Radial Velocity Flip)
+    prev_v_rad = getattr(choose_action, "prev_v_rad", v_rad)
+    choose_action.prev_v_rad = v_rad
+    
+    # Trigger when radial velocity flips sign (Apogee/Perigee)
+    # AND we are reasonably close to the target radius
+    apsis_reached = (prev_v_rad * v_rad < 0) 
+    near_target = abs(r - TARGET_RADIUS) < 0.1
 
-    sign_flip = (prev_v_rad > 0 and v_rad < 0) or (prev_v_rad < 0 and v_rad > 0)
-    near_target = abs(r - TARGET_RADIUS) < 0.01
-
-    # Phase 2: Travel along transfer orbit and detect when to apply second burn
+    # --- Phase 2: Circularization Burn ---
     if not second_burn_applied:
-        # detect apsis (radial velocity sign flip)
-        prev_vr = getattr(choose_thrust, "prev_vr", v_rad)
-        choose_thrust.prev_vr = v_rad
-        sign_flip = (prev_vr > 0 and v_rad < 0) or \
-                    (prev_vr < 0 and v_rad > 0)
+        if apsis_reached and near_target:
+            
+            # Calculate Circular Orbit parameters
+            v_circ_req = math.sqrt(GM / r)
+            
+            # Calculate Vector Burn (Circularize)
+            thrust, heading, dv = calculate_maneuver_vector(x, y, vx, vy, v_circ_req)
 
-        if sign_flip and near_target:
-            # Phase 3: Apply second burn to circularize at destination orbit
-            # Calculate the actual delta-v needed based on current velocity
-            # This accounts for any deviations from the ideal transfer orbit
-            v_circular_target = math.sqrt(GM / TARGET_RADIUS)
-            delta_v2_actual = v_circular_target - v_tan
-            a_2_actual = delta_v2_actual / dt
-
-            print(f"[{tick}] SECOND BURN at x={x:.4f}, y={y:.4f}")
-            print(f"    dv2_actual={delta_v2_actual:.5f}, thrust={a_2_actual:.4f}")
             second_burn_applied = True
-            return a_2_actual
+            print(f"[{tick}] BURN 2 (Circularize): r={r:.4f}")
+            print(f"    Target V: {v_circ_req:.4f}")
+            print(f"    Vector DV: {dv:.4f}, Thrust: {thrust:.4f}")
+            
+            return thrust, heading
+        
+        # Coasting during transfer
+        coasting_heading = math.atan2(vy, vx)
+        return 0.0, coasting_heading
 
-        # Continue coasting
-        return 0.0
+    # --- Phase 3: Coasting (Finished) ---
+    # Just drift. Point along velocity vector to prevent rubberbanding.
+    coasting_heading = math.atan2(vy, vx)
+    return 0.0, coasting_heading
 
-    # Phase 3: After both burns, continue coasting in circular orbit
-    return 0.0
+# ------------------------------------------------------------------
+# Networking & Execution
+# ------------------------------------------------------------------
 
+async def send_manual_control(ws, tick, thrust, target_heading):
+    if cached_state is None: return
 
+    current_heading = cached_state.get("heading", 0.0)
 
-async def send_action(ws, tick, thrust):
+    # Calculate Turn needed (Shortest path)
+    diff = target_heading - current_heading
+    diff = (diff + math.pi) % (2 * math.pi) - math.pi
+    
+    # Determine turn rate needed to snap to heading in 1 tick
+    turn_action = diff / dt
+    
     msg = {
         "header": {
             "version": "1.0",
@@ -162,7 +210,7 @@ async def send_action(ws, tick, thrust):
             "client_id": str(uuid.uuid4())
         },
         "payload": {
-            "turn": 0.0,
+            "turn": float(turn_action),
             "thrust": float(thrust)
         }
     }
@@ -186,38 +234,43 @@ async def main():
             }
         }
         await ws.send(json.dumps(join_msg))
+        print("Connected. Waiting for server...")
 
         while True:
-            raw = await ws.recv()
-            msg = json.loads(raw)
-            t = msg["header"]["type"]
+            try:
+                raw = await ws.recv()
+                msg = json.loads(raw)
+                t = msg["header"]["type"]
 
-            if t == "mode_confirmed":
-                my_ship_id = msg["payload"].get("ship_id", my_ship_id)
+                if t == "mode_confirmed":
+                    my_ship_id = msg["payload"].get("ship_id", my_ship_id)
+                    print(f"Joined Game. Ship ID: {my_ship_id}")
 
-            elif t == "state_update":
-                ships = msg["payload"]["ships"]
-                tick = msg["header"]["tick"]
+                elif t == "state_update":
+                    ships = msg["payload"]["ships"]
+                    tick = msg["header"]["tick"]
 
-                if my_ship_id in ships:
-                    s = ships[my_ship_id]
-                    cached_state = {
-                        "tick": tick,
-                        "x": s["x"],
-                        "y": s["y"],
-                        "vx": s["vx"],
-                        "vy": s["vy"]
-                    }
+                    if my_ship_id in ships:
+                        s = ships[my_ship_id]
+                        cached_state = {
+                            "tick": tick,
+                            "x": s["x"],
+                            "y": s["y"],
+                            "vx": s["vx"],
+                            "vy": s["vy"],
+                            "heading": s.get("heading", 0.0)
+                        }
 
-            elif t == "action_request":
-                tick = msg["header"]["tick"]
-                if cached_state is None:
-                    await send_action(ws, tick, 0.0)
-                    continue
-                thrust = choose_thrust()
-                await send_action(ws, tick, thrust)
+                elif t == "action_request":
+                    tick = msg["header"]["tick"]
+                    thrust_req, heading_req = choose_action()
+                    await send_manual_control(ws, tick, thrust_req, heading_req)
 
+            except Exception as e:
+                print(f"Error: {e}")
+                break
+            
             await asyncio.sleep(0.0001)
 
-
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())
