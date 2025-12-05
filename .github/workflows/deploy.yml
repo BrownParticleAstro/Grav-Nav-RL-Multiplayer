@@ -77,7 +77,9 @@ jobs:
         id: image-info
         run: |
           SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
-          IMAGE_TAG="${{ github.ref_name }}-${SHORT_SHA}-$(date +%s)"
+          # Sanitize branch name for Docker tag (replace / and other invalid chars with -)
+          BRANCH_NAME=$(echo "${{ github.ref_name }}" | sed 's/[^a-zA-Z0-9._-]/-/g' | tr '[:upper:]' '[:lower:]')
+          IMAGE_TAG="${BRANCH_NAME}-${SHORT_SHA}-$(date +%s)"
           IMAGE_NAME="${{ env.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.REGISTRY_NAME }}/${{ env.SERVICE_NAME }}"
           
           echo "tag=${IMAGE_TAG}" >> $GITHUB_OUTPUT
@@ -122,29 +124,27 @@ jobs:
           
       - name: 🏗️ Build Docker image
         run: |
-          set -o pipefail
+          set -euo pipefail
           echo "🔨 Building Docker image..."
           docker build \
             --tag ${{ needs.prepare.outputs.image-name }}:${{ needs.prepare.outputs.image-tag }} \
             --tag ${{ needs.prepare.outputs.image-name }}:latest \
             --file Dockerfile \
             . | tee build.log
-            
           echo "✅ Docker build successful"
           
       - name: 📤 Push image to Artifact Registry
         run: |
-          set -o pipefail
+          set -euo pipefail
           echo "📦 Pushing image to Artifact Registry..."
           docker push ${{ needs.prepare.outputs.image-name }}:${{ needs.prepare.outputs.image-tag }} | tee push-tag.log
           docker push ${{ needs.prepare.outputs.image-name }}:latest | tee push-latest.log
-          
           echo "✅ Image pushed successfully"
           
       - name: 🚀 Deploy to Cloud Run
         id: deploy
         run: |
-          set -o pipefail
+          set -euo pipefail
           echo "🚀 Deploying to Cloud Run..."
           
           gcloud run deploy ${{ env.SERVICE_NAME }} \
@@ -164,7 +164,6 @@ jobs:
             --execution-environment=gen2 \
             --quiet \
             | tee deploy.log
-            
           echo "✅ Deployment successful"
           
       - name: 🌐 Get service URL
