@@ -36,8 +36,10 @@ SA_EMAIL="${SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 SA_DISPLAY_NAME="Grav Nav Cloud Run Service Account"
 
 # Check if service account already exists
+SA_EXISTS=false
 if gcloud iam service-accounts describe "$SA_EMAIL" &> /dev/null; then
     echo "⚠️  Service account $SA_EMAIL already exists"
+    SA_EXISTS=true
     read -p "Do you want to update its roles? (y/n): " UPDATE_ROLES
     if [ "$UPDATE_ROLES" != "y" ]; then
         echo "ℹ️  Skipping role assignment"
@@ -49,6 +51,18 @@ else
     gcloud iam service-accounts create "$SA_NAME" \
         --display-name="$SA_DISPLAY_NAME" \
         --description="Service account for Grav Nav multiplayer game Cloud Run deployment"
+    
+    # Wait for service account to propagate (typically takes 5-10 seconds)
+    echo "⏳ Waiting for service account to propagate..."
+    sleep 10
+    
+    # Verify the service account was created successfully
+    if ! gcloud iam service-accounts describe "$SA_EMAIL" &> /dev/null; then
+        echo "❌ ERROR: Service account creation failed or not yet propagated"
+        echo "Please wait a moment and try running the script again"
+        exit 1
+    fi
+    echo "✅ Service account created and verified"
 fi
 
 # Required IAM roles for Cloud Run deployment
