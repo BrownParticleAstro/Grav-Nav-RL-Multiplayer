@@ -124,53 +124,44 @@ jobs:
         with:
           project_id: ${{ env.GCP_PROJECT_ID }}
           
-      - name: 🐳 Configure Docker for Artifact Registry
+      - name: 🐳 Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        
+      - name: 🔐 Authenticate Docker to Artifact Registry
         run: |
           gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
           
-      - name: 🏗️ Build Docker image
-        run: |
-          set -euo pipefail
-          echo "🔨 Building Docker image..."
-          docker build \
-            --tag ${{ needs.prepare.outputs.image-name }}:${{ needs.prepare.outputs.image-tag }} \
-            --tag ${{ needs.prepare.outputs.image-name }}:latest \
-            --file Dockerfile \
-            . | tee build.log
-          echo "✅ Docker build successful"
-          
-      - name: 📤 Push image to Artifact Registry
-        run: |
-          set -euo pipefail
-          echo "📦 Pushing image to Artifact Registry..."
-          docker push ${{ needs.prepare.outputs.image-name }}:${{ needs.prepare.outputs.image-tag }} | tee push-tag.log
-          docker push ${{ needs.prepare.outputs.image-name }}:latest | tee push-latest.log
-          echo "✅ Image pushed successfully"
+      - name: 🏗️ Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ${{ needs.prepare.outputs.image-name }}:${{ needs.prepare.outputs.image-tag }}
+            ${{ needs.prepare.outputs.image-name }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           
       - name: 🚀 Deploy to Cloud Run
         id: deploy
-        run: |
-          set -euo pipefail
-          echo "🚀 Deploying to Cloud Run..."
-          
-          gcloud run deploy ${{ env.SERVICE_NAME }} \
-            --image=${{ needs.prepare.outputs.image-name }}:${{ needs.prepare.outputs.image-tag }} \
-            --region=${{ env.GCP_REGION }} \
-            --platform=managed \
-            --allow-unauthenticated \
-            --memory=2Gi \
-            --cpu=2 \
-            --min-instances=0 \
-            --max-instances=10 \
-            --timeout=300s \
-            --port=8080 \
-            --set-env-vars="PYTHON_ENV=production" \
-            --service-account=grav-nav-cloud-run-sa@${{ env.GCP_PROJECT_ID }}.iam.gserviceaccount.com \
-            --no-cpu-throttling \
-            --execution-environment=gen2 \
-            --quiet \
-            | tee deploy.log
-          echo "✅ Deployment successful"
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: ${{ env.SERVICE_NAME }}
+          region: ${{ env.GCP_REGION }}
+          image: ${{ needs.prepare.outputs.image-name }}:${{ needs.prepare.outputs.image-tag }}
+          flags: |
+            --allow-unauthenticated
+            --memory=2Gi
+            --cpu=2
+            --min-instances=0
+            --max-instances=10
+            --timeout=300s
+            --port=8080
+            --set-env-vars=PYTHON_ENV=production
+            --service-account=grav-nav-cloud-run-sa@${{ env.GCP_PROJECT_ID }}.iam.gserviceaccount.com
+            --no-cpu-throttling
+            --execution-environment=gen2
           
       - name: 🌐 Get service URL
         id: url
