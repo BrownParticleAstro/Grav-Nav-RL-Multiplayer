@@ -38,16 +38,33 @@ fi
 echo "📁 Repository: $REPO"
 echo ""
 
+# Required variables
+REQUIRED_VARIABLES=(
+    "GCP_PROJECT_ID"
+)
+
 # Required secrets
 REQUIRED_SECRETS=(
-    "GCP_PROJECT_ID"
     "GCP_SERVICE_ACCOUNT_KEY"
 )
 
-echo "🔐 Checking required secrets..."
+echo "🔧 Checking required variables..."
 echo ""
 
 ALL_VALID=true
+
+for VARIABLE in "${REQUIRED_VARIABLES[@]}"; do
+    if gh variable list --repo="$REPO" | grep -q "^$VARIABLE"; then
+        echo "  ✅ $VARIABLE is set"
+    else
+        echo "  ❌ $VARIABLE is NOT set"
+        ALL_VALID=false
+    fi
+done
+
+echo ""
+echo "🔐 Checking required secrets..."
+echo ""
 
 for SECRET in "${REQUIRED_SECRETS[@]}"; do
     if gh secret list --repo="$REPO" | grep -q "^$SECRET"; then
@@ -61,16 +78,16 @@ done
 echo ""
 
 if [ "$ALL_VALID" = true ]; then
-    echo "✅ All required secrets are configured!"
+    echo "✅ All required configuration is present!"
     echo ""
     echo "📖 For deployment instructions, refer to:"
     echo "  .deployment/DEPLOYMENT.md - Phase 2: Deploy"
     echo ""
     exit 0
 else
-    echo "❌ Some secrets are missing!"
+    echo "❌ Some configuration is missing!"
     echo ""
-    echo "📌 Run the setup script to configure secrets:"
+    echo "📌 Run the setup script to configure:"
     echo "  ./.deployment/scripts/github/setup-github-secrets.sh"
     exit 1
 fi

@@ -19,6 +19,7 @@ on:
       
 env:
   GCP_REGION: ${{ inputs.region || 'us-east1' }}
+  GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
   SERVICE_NAME: grav-nav-multiplayer
   REGISTRY_NAME: grav-nav-repo
 
@@ -42,24 +43,25 @@ jobs:
       - name: 📥 Checkout code
         uses: actions/checkout@v4
         
-      - name: 🔍 Validate required secrets
+      - name: 🔍 Validate required configuration
         run: |
-          echo "✅ Validating GitHub Secrets..."
+          echo "✅ Validating configuration..."
           
-          # Check if secrets are set by testing their length
-          if [ ${#GCP_PROJECT_ID} -eq 0 ]; then
-            echo "❌ ERROR: GCP_PROJECT_ID secret is not set"
+          # Check if GCP_PROJECT_ID variable is set
+          if [ -z "${{ env.GCP_PROJECT_ID }}" ]; then
+            echo "❌ ERROR: GCP_PROJECT_ID variable is not set"
+            echo "Please set it as a repository variable in GitHub"
             exit 1
           fi
           
+          # Check if service account key secret is set
           if [ ${#GCP_SERVICE_ACCOUNT_KEY} -eq 0 ]; then
             echo "❌ ERROR: GCP_SERVICE_ACCOUNT_KEY secret is not set"
             exit 1
           fi
           
-          echo "✅ All required secrets are present"
+          echo "✅ All required configuration is present"
         env:
-          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
           GCP_SERVICE_ACCOUNT_KEY: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
       - name: 🔐 Authenticate to Google Cloud
         id: auth
@@ -70,7 +72,7 @@ jobs:
       - name: ☁️ Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
         with:
-          project_id: ${{ secrets.GCP_PROJECT_ID }}
+          project_id: ${{ env.GCP_PROJECT_ID }}
           
       - name: 🐳 Configure Docker for Artifact Registry
         run: |
@@ -83,7 +85,7 @@ jobs:
           # Sanitize branch name for Docker tag (replace / and other invalid chars with -)
           BRANCH_NAME=$(echo "${{ github.ref_name }}" | sed 's/[^a-zA-Z0-9._-]/-/g' | tr '[:upper:]' '[:lower:]')
           IMAGE_TAG="${BRANCH_NAME}-${SHORT_SHA}-$(date +%s)"
-          IMAGE_NAME="${{ env.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.REGISTRY_NAME }}/${{ env.SERVICE_NAME }}"
+          IMAGE_NAME="${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.REGISTRY_NAME }}/${{ env.SERVICE_NAME }}"
           
           echo "tag=${IMAGE_TAG}" >> $GITHUB_OUTPUT
           echo "name=${IMAGE_NAME}" >> $GITHUB_OUTPUT
@@ -120,7 +122,7 @@ jobs:
       - name: ☁️ Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
         with:
-          project_id: ${{ secrets.GCP_PROJECT_ID }}
+          project_id: ${{ env.GCP_PROJECT_ID }}
           
       - name: 🐳 Configure Docker for Artifact Registry
         run: |
@@ -163,7 +165,7 @@ jobs:
             --timeout=300s \
             --port=8080 \
             --set-env-vars="PORT=8080,PYTHON_ENV=production" \
-            --service-account=grav-nav-cloud-run-sa@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com \
+            --service-account=grav-nav-cloud-run-sa@${{ env.GCP_PROJECT_ID }}.iam.gserviceaccount.com \
             --no-cpu-throttling \
             --execution-environment=gen2 \
             --quiet \
@@ -210,8 +212,8 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### 🔗 Quick Links" >> $GITHUB_STEP_SUMMARY
           echo "- [🌐 Visit Application](${{ steps.url.outputs.url }})" >> $GITHUB_STEP_SUMMARY
-          echo "- [📊 Cloud Run Console](https://console.cloud.google.com/run/detail/${{ env.GCP_REGION }}/${{ env.SERVICE_NAME }}/metrics?project=${{ secrets.GCP_PROJECT_ID }})" >> $GITHUB_STEP_SUMMARY
-          echo "- [📝 Logs](https://console.cloud.google.com/run/detail/${{ env.GCP_REGION }}/${{ env.SERVICE_NAME }}/logs?project=${{ secrets.GCP_PROJECT_ID }})" >> $GITHUB_STEP_SUMMARY
+          echo "- [📊 Cloud Run Console](https://console.cloud.google.com/run/detail/${{ env.GCP_REGION }}/${{ env.SERVICE_NAME }}/metrics?project=${{ env.GCP_PROJECT_ID }})" >> $GITHUB_STEP_SUMMARY
+          echo "- [📝 Logs](https://console.cloud.google.com/run/detail/${{ env.GCP_REGION }}/${{ env.SERVICE_NAME }}/logs?project=${{ env.GCP_PROJECT_ID }})" >> $GITHUB_STEP_SUMMARY
 
   # ============================================================
   # PHASE 3: TEARDOWN - Cleanup (runs on failure)
@@ -236,7 +238,7 @@ jobs:
       - name: ☁️ Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
         with:
-          project_id: ${{ secrets.GCP_PROJECT_ID }}
+          project_id: ${{ env.GCP_PROJECT_ID }}
         continue-on-error: true
           
       - name: 🧹 Cleanup failed deployment artifacts

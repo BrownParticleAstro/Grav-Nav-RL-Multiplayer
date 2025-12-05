@@ -58,26 +58,27 @@ if [ ! -f "$SA_KEY_PATH" ]; then
     exit 1
 fi
 
-# Set GitHub Secrets
+# Set GitHub Variables and Secrets
 echo ""
-echo "📝 Setting GitHub Secrets..."
+echo "📝 Setting GitHub configuration..."
 
-# GCP Project ID
-echo "  → Setting GCP_PROJECT_ID"
-echo "$GCP_PROJECT_ID" | gh secret set GCP_PROJECT_ID --repo="$REPO"
+# GCP Project ID as a repository variable
+echo "  → Setting GCP_PROJECT_ID (as repository variable)"
+gh variable set GCP_PROJECT_ID --body="$GCP_PROJECT_ID" --repo="$REPO"
 
-# Service Account Key
-echo "  → Setting GCP_SERVICE_ACCOUNT_KEY"
+# Service Account Key as a secret
+echo "  → Setting GCP_SERVICE_ACCOUNT_KEY (as secret)"
 gh secret set GCP_SERVICE_ACCOUNT_KEY --repo="$REPO" < "$SA_KEY_PATH"
 
 echo ""
-echo "✅ GitHub Secrets configured successfully!"
+echo "✅ GitHub configuration completed successfully!"
 echo ""
-echo "📋 Secrets set:"
-echo "  • GCP_PROJECT_ID"
-echo "  • GCP_SERVICE_ACCOUNT_KEY"
+echo "📋 Configuration set:"
+echo "  • GCP_PROJECT_ID (repository variable)"
+echo "  • GCP_SERVICE_ACCOUNT_KEY (secret)"
 echo ""
-echo "🔍 To verify secrets:"
+echo "🔍 To verify:"
+echo "  gh variable list --repo=$REPO"
 echo "  gh secret list --repo=$REPO"
 echo ""
 echo "📖 For next steps, refer to:"

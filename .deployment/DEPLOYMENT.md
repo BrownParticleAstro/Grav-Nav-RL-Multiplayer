@@ -160,21 +160,21 @@ cd .deployment/scripts/github
 # 2. Path to service account key file
 # 3. Repository name (auto-detected or manual input)
 
-# It will create these secrets:
-# - GCP_PROJECT_ID
-# - GCP_SERVICE_ACCOUNT_KEY
+# It will create:
+# - GCP_PROJECT_ID (repository variable)
+# - GCP_SERVICE_ACCOUNT_KEY (secret)
 ```
 
 ### Step 1.7: Validate GitHub Configuration
 
 ```bash
-# Verify all secrets are set correctly
+# Verify all configuration is set correctly
 ./validate-github-config.sh
 
 # Expected output:
-#   ✅ GCP_PROJECT_ID is set
-#   ✅ GCP_SERVICE_ACCOUNT_KEY is set
-#   ✅ All required secrets are configured!
+#   ✅ GCP_PROJECT_ID is set (variable)
+#   ✅ GCP_SERVICE_ACCOUNT_KEY is set (secret)
+#   ✅ All required configuration is present!
 ```
 
 ### Step 1.8: Configure Docker for Local Testing (Optional)
@@ -313,11 +313,11 @@ gcloud iam service-accounts delete \
     --quiet
 ```
 
-### Delete GitHub Secrets
+### Delete GitHub Configuration
 
 ```bash
-# Remove secrets from GitHub
-gh secret remove GCP_PROJECT_ID
+# Remove variable and secret from GitHub
+gh variable delete GCP_PROJECT_ID
 gh secret remove GCP_SERVICE_ACCOUNT_KEY
 ```
 
