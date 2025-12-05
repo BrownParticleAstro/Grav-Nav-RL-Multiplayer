@@ -63,14 +63,9 @@ echo ""
 if [ "$ALL_VALID" = true ]; then
     echo "✅ All required secrets are configured!"
     echo ""
-    echo "📌 You're ready to deploy!"
+    echo "📖 For deployment instructions, refer to:"
+    echo "  .deployment/DEPLOYMENT.md - Phase 2: Deploy"
     echo ""
-    echo "To trigger a deployment:"
-    echo "  1. Go to GitHub Actions in your repository"
-    echo "  2. Select 'Deploy to Google Cloud Run' workflow"
-    echo "  3. Click 'Run workflow'"
-    echo "  4. Select environment and region"
-    echo "  5. Click 'Run workflow' button"
     exit 0
 else
     echo "❌ Some secrets are missing!"

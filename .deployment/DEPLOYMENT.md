@@ -202,10 +202,13 @@ Once Phase 1 is complete, deployments are fully automated through GitHub Actions
 
 3. **Run Workflow**
    - Click "Run workflow" button (right side)
+   - **Select branch**: Choose your current branch (e.g., `copilot/prepare-repo-for-web-deployment` for testing, or `main` for production)
    - Select parameters:
      - **Environment**: `production` or `staging`
      - **Region**: `us-east1` (required for Brown University)
    - Click "Run workflow"
+   
+   **Note**: You can run the workflow from any branch, not just the default branch. This allows you to test deployments before merging.
 
 4. **Monitor Progress**
    - Watch the workflow execute through 3 phases:
@@ -220,7 +223,7 @@ Once Phase 1 is complete, deployments are fully automated through GitHub Actions
 ### Option B: Deploy via CLI
 
 ```bash
-# Trigger workflow from command line
+# Trigger workflow from command line (works on current branch)
 gh workflow run deploy.yml \
     --field environment=production \
     --field region=us-east1
@@ -231,6 +234,8 @@ gh run watch
 # Get the latest run status
 gh run list --workflow=deploy.yml --limit 1
 ```
+
+**Note**: The CLI command runs the workflow on your currently checked-out branch.
 
 ### Option C: Manual Deployment (Backup Method)
 
