@@ -122,6 +122,7 @@ jobs:
           
       - name: 🏗️ Build Docker image
         run: |
+          set -o pipefail
           echo "🔨 Building Docker image..."
           docker build \
             --tag ${{ needs.prepare.outputs.image-name }}:${{ needs.prepare.outputs.image-tag }} \
@@ -129,29 +130,21 @@ jobs:
             --file Dockerfile \
             . | tee build.log
             
-          if [ $? -eq 0 ]; then
-            echo "✅ Docker build successful"
-          else
-            echo "❌ Docker build failed"
-            exit 1
-          fi
+          echo "✅ Docker build successful"
           
       - name: 📤 Push image to Artifact Registry
         run: |
+          set -o pipefail
           echo "📦 Pushing image to Artifact Registry..."
           docker push ${{ needs.prepare.outputs.image-name }}:${{ needs.prepare.outputs.image-tag }} | tee push-tag.log
           docker push ${{ needs.prepare.outputs.image-name }}:latest | tee push-latest.log
           
-          if [ $? -eq 0 ]; then
-            echo "✅ Image pushed successfully"
-          else
-            echo "❌ Image push failed"
-            exit 1
-          fi
+          echo "✅ Image pushed successfully"
           
       - name: 🚀 Deploy to Cloud Run
         id: deploy
         run: |
+          set -o pipefail
           echo "🚀 Deploying to Cloud Run..."
           
           gcloud run deploy ${{ env.SERVICE_NAME }} \
@@ -172,12 +165,7 @@ jobs:
             --quiet \
             | tee deploy.log
             
-          if [ $? -eq 0 ]; then
-            echo "✅ Deployment successful"
-          else
-            echo "❌ Deployment failed"
-            exit 1
-          fi
+          echo "✅ Deployment successful"
           
       - name: 🌐 Get service URL
         id: url
