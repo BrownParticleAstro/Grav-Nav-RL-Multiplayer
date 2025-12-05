@@ -259,7 +259,7 @@ gcloud run deploy grav-nav-multiplayer \
     --max-instances=10 \
     --timeout=300s \
     --port=8080 \
-    --set-env-vars="PORT=8080,PYTHON_ENV=production" \
+    --set-env-vars="PYTHON_ENV=production" \
     --service-account=grav-nav-cloud-run-sa@$GCP_PROJECT_ID.iam.gserviceaccount.com \
     --no-cpu-throttling \
     --execution-environment=gen2
