@@ -91,6 +91,7 @@ jobs:
           echo "🎉 Preparation phase completed successfully"
           echo "📍 Region: ${{ env.GCP_REGION }}"
           echo "🏷️ Image tag: ${{ steps.image-info.outputs.tag }}"
+          echo "🏷️ Image name: ${{ steps.image-info.outputs.name }}"
 
   # ============================================================
   # PHASE 2: DEPLOY - Build and Deploy to Cloud Run
