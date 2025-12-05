@@ -76,6 +76,6 @@ else
     echo "❌ Some secrets are missing!"
     echo ""
     echo "📌 Run the setup script to configure secrets:"
-    echo "  ./deployment/scripts/github/setup-github-secrets.sh"
+    echo "  ./.deployment/scripts/github/setup-github-secrets.sh"
     exit 1
 fi
