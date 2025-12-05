@@ -46,18 +46,21 @@ jobs:
         run: |
           echo "✅ Validating GitHub Secrets..."
           
-          if [ -z "${{ secrets.GCP_PROJECT_ID }}" ]; then
+          # Check if secrets are set by testing their length
+          if [ ${#GCP_PROJECT_ID} -eq 0 ]; then
             echo "❌ ERROR: GCP_PROJECT_ID secret is not set"
             exit 1
           fi
           
-          if [ -z "${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}" ]; then
+          if [ ${#GCP_SERVICE_ACCOUNT_KEY} -eq 0 ]; then
             echo "❌ ERROR: GCP_SERVICE_ACCOUNT_KEY secret is not set"
             exit 1
           fi
           
           echo "✅ All required secrets are present"
-          
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GCP_SERVICE_ACCOUNT_KEY: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
       - name: 🔐 Authenticate to Google Cloud
         id: auth
         uses: google-github-actions/auth@v2
