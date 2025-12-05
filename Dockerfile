@@ -19,4 +19,4 @@ EXPOSE 8080
 
 # Command to run the application
 # Cloud Run requires binding to PORT environment variable
-CMD ["sh", "-c", "python -c \"import os; port = int(os.environ.get('PORT', 8080)); import uvicorn; from server_multiship import app; uvicorn.run(app, host='0.0.0.0', port=port)\""]
+CMD ["python", "start.py"]
