@@ -16,3 +16,25 @@ __pycache__/
 # Ignore large training & testing data files
 models/**/testing/
 models/**/training/
+
+# =============== Deployment Artifacts ================
+
+# GCP Service Account Keys (NEVER COMMIT THESE!)
+*.json
+!package.json
+!tsconfig.json
+!.vscode/*.json
+
+# Deployment logs
+*.log
+build.log
+deploy.log
+push-*.log
+
+# Environment files with secrets
+.env
+.env.local
+.env.production
+
+# Docker artifacts
+docker-compose.override.yml

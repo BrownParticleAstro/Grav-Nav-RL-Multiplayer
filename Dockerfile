@@ -14,7 +14,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Expose the port the application will run on
-EXPOSE 5501
+# Cloud Run will provide PORT env var, default to 8080
+EXPOSE 8080
 
 # Command to run the application
-CMD ["python", "server_multiship.py"]
+# Cloud Run requires binding to PORT environment variable
+CMD ["sh", "-c", "python -c \"import os; port = int(os.environ.get('PORT', 8080)); import uvicorn; from server_multiship import app; uvicorn.run(app, host='0.0.0.0', port=port)\""]
