@@ -2,7 +2,251 @@ name: 🚀 Deploy to Google Cloud Run
 
 on:
   workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - staging
+      region:
+        description: 'GCP Region'
+        required: true
+        default: 'us-east1'
+        type: string
+      
+env:
+  GCP_REGION: ${{ inputs.region || 'us-east1' }}
+  GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+  SERVICE_NAME: grav-nav-multiplayer
+  REGISTRY_NAME: grav-nav-repo
 
 jobs:
-  deploy:
+  # ============================================================
+  # PHASE 1: PREPARE - Validation, Setup, Authentication
+  # ============================================================
+  prepare:
+    name: 🔍 Prepare Deployment
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    
+    outputs:
+      image-tag: ${{ steps.image-info.outputs.tag }}
+      image-name: ${{ steps.image-info.outputs.name }}
+      
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        
+      - name: 🔍 Validate required configuration
+        run: |
+          echo "✅ Validating configuration..."
+          
+          # Check if GCP_PROJECT_ID variable is set
+          if [ -z "${{ env.GCP_PROJECT_ID }}" ]; then
+            echo "❌ ERROR: GCP_PROJECT_ID variable is not set"
+            echo "Please set it as a repository variable in GitHub"
+            exit 1
+          fi
+          
+          # Check if service account key secret is set
+          if [ ${#GCP_SERVICE_ACCOUNT_KEY} -eq 0 ]; then
+            echo "❌ ERROR: GCP_SERVICE_ACCOUNT_KEY secret is not set"
+            exit 1
+          fi
+          
+          echo "✅ All required configuration is present"
+        env:
+          GCP_SERVICE_ACCOUNT_KEY: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
+      - name: 🔐 Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
+          
+      - name: ☁️ Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+          
+      - name: 🐳 Configure Docker for Artifact Registry
+        run: |
+          gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
+          
+      - name: 🏷️ Generate image info
+        id: image-info
+        run: |
+          SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
+          # Sanitize branch name for Docker tag (replace / and other invalid chars with -)
+          BRANCH_NAME=$(echo "${{ github.ref_name }}" | sed 's/[^a-zA-Z0-9._-]/-/g' | tr '[:upper:]' '[:lower:]')
+          IMAGE_TAG="${BRANCH_NAME}-${SHORT_SHA}-$(date +%s)"
+          IMAGE_NAME="${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.REGISTRY_NAME }}/${{ env.SERVICE_NAME }}"
+          
+          echo "tag=${IMAGE_TAG}" >> $GITHUB_OUTPUT
+          echo "name=${IMAGE_NAME}" >> $GITHUB_OUTPUT
+          echo "📦 Image will be tagged as: ${IMAGE_NAME}:${IMAGE_TAG}"
+          
+      - name: ✅ Deployment preparation complete
+        run: |
+          echo "🎉 Preparation phase completed successfully"
+          echo "📍 Region: ${{ env.GCP_REGION }}"
+          echo "🏷️ Image tag: ${{ steps.image-info.outputs.tag }}"
+          echo "🏷️ Image name: ${{ steps.image-info.outputs.name }}"
+
+  # ============================================================
+  # PHASE 2: DEPLOY - Build and Deploy to Cloud Run
+  # ============================================================
+  deploy:
+    name: 🚀 Build & Deploy
+    runs-on: ubuntu-latest
+    needs: prepare
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        
+      - name: 🔐 Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
+          
+      - name: ☁️ Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+          
+      - name: 🐳 Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        
+      - name: 🔐 Authenticate Docker to Artifact Registry
+        run: |
+          gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
+          
+      - name: 🏗️ Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ${{ needs.prepare.outputs.image-name }}:${{ needs.prepare.outputs.image-tag }}
+            ${{ needs.prepare.outputs.image-name }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          
+      - name: 🚀 Deploy to Cloud Run
+        id: deploy
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: ${{ env.SERVICE_NAME }}
+          region: ${{ env.GCP_REGION }}
+          image: ${{ needs.prepare.outputs.image-name }}:${{ needs.prepare.outputs.image-tag }}
+          flags: |
+            --allow-unauthenticated
+            --memory=2Gi
+            --cpu=1
+            --min-instances=0
+            --max-instances=1
+            --timeout=300s
+            --port=8080
+            --set-env-vars=PYTHON_ENV=production
+            --service-account=grav-nav-cloud-run-sa@${{ env.GCP_PROJECT_ID }}.iam.gserviceaccount.com
+            --no-cpu-throttling
+            --execution-environment=gen2
+          
+      - name: 🌐 Get service URL
+        id: url
+        run: |
+          SERVICE_URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} \
+            --region=${{ env.GCP_REGION }} \
+            --format='value(status.url)')
+          
+          echo "url=${SERVICE_URL}" >> $GITHUB_OUTPUT
+          echo "🌐 Service URL: ${SERVICE_URL}"
+          
+      - name: 🏥 Health check
+        run: |
+          echo "🔍 Performing health check..."
+          SERVICE_URL="${{ steps.url.outputs.url }}"
+          
+          # Wait a bit for service to be ready
+          sleep 10
+          
+          # Try to reach the service
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "${SERVICE_URL}" || echo "000")
+          
+          if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "301" ] || [ "$HTTP_CODE" = "302" ]; then
+            echo "✅ Health check passed (HTTP ${HTTP_CODE})"
+          else
+            echo "⚠️ Warning: Health check returned HTTP ${HTTP_CODE}"
+            echo "This might be normal if the app requires specific paths or takes time to start"
+          fi
+          
+      - name: 📊 Deployment summary
+        run: |
+          echo "## 🎉 Deployment Complete!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📦 Deployment Details" >> $GITHUB_STEP_SUMMARY
+          echo "- **Service:** ${{ env.SERVICE_NAME }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Region:** ${{ env.GCP_REGION }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Image:** ${{ needs.prepare.outputs.image-name }}:${{ needs.prepare.outputs.image-tag }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **URL:** ${{ steps.url.outputs.url }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🔗 Quick Links" >> $GITHUB_STEP_SUMMARY
+          echo "- [🌐 Visit Application](${{ steps.url.outputs.url }})" >> $GITHUB_STEP_SUMMARY
+          echo "- [📊 Cloud Run Console](https://console.cloud.google.com/run/detail/${{ env.GCP_REGION }}/${{ env.SERVICE_NAME }}/metrics?project=${{ env.GCP_PROJECT_ID }})" >> $GITHUB_STEP_SUMMARY
+          echo "- [📝 Logs](https://console.cloud.google.com/run/detail/${{ env.GCP_REGION }}/${{ env.SERVICE_NAME }}/logs?project=${{ env.GCP_PROJECT_ID }})" >> $GITHUB_STEP_SUMMARY
+
+  # ============================================================
+  # PHASE 3: TEARDOWN - Cleanup (runs on failure)
+  # ============================================================
+  teardown:
+    name: 🧹 Cleanup
+    runs-on: ubuntu-latest
+    needs: [prepare, deploy]
+    if: failure()
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      id-token: write
+    
+    steps:
+      - name: 🔐 Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
+        continue-on-error: true
+          
+      - name: ☁️ Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+        continue-on-error: true
+          
+      - name: 🧹 Cleanup failed deployment artifacts
+        run: |
+          echo "🧹 Checking for cleanup tasks..."
+          echo "ℹ️ Note: Failed image artifacts will remain in Artifact Registry for debugging"
+          echo "ℹ️ Manual cleanup may be required if deployment partially succeeded"
+        continue-on-error: true
+          
+      - name: 📢 Failure notification
+        run: |
+          echo "## ⚠️ Deployment Failed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "The deployment encountered errors. Please check the logs above." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🔍 Troubleshooting Steps" >> $GITHUB_STEP_SUMMARY
+          echo "1. Check the build logs for Docker build errors" >> $GITHUB_STEP_SUMMARY
+          echo "2. Verify all GitHub Secrets are correctly set" >> $GITHUB_STEP_SUMMARY
+          echo "3. Ensure the service account has necessary permissions" >> $GITHUB_STEP_SUMMARY
+          echo "4. Review Cloud Run service logs in GCP Console" >> $GITHUB_STEP_SUMMARY
