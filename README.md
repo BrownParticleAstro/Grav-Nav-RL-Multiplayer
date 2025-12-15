@@ -103,13 +103,21 @@ Follow these steps to run the server and client directly on your machine.
 
 #### Step 3: Run the Multiplayer Server
 
-1.  **Start the server:**
-    ```bash
-    python server_multiship.py
-    ```
-2.  **Verify server is running:**
-    -   You should see output like: `INFO: Uvicorn running on http://0.0.0.0:5501`
-    -   The server is now accessible at `http://localhost:5501`
+1. **Start the server:**
+
+   ```bash
+   python server_multiship.py
+   ```
+
+   *Note: To run multidevice version, please run this isntead:
+   ```bash
+   uvicorn server_multiship:app --host 0.0.0.0 --port 5500
+   ```
+
+2. **Verify server is running:**
+   - You should see output like: `INFO: Uvicorn running on http://0.0.0.0:5500`
+   - The server will be accessible at `http://localhost:5500`
+   - For multidevice version, the server will be accessible at `http://10.37.117.236:5500/`. This is based off the IP address of the Brown WiFi network.
 
 #### Step 4: Open the Game Client
 
