@@ -8,6 +8,19 @@ This project simulates 2D orbital maneuvers via RL and provides a real-time mult
 
 ---
 
+## 🚀 Deployment to Production
+
+For deploying this application to Google Cloud Run with automated CI/CD, see the complete deployment guide:
+
+**📖 [Deployment Documentation](.deployment/DEPLOYMENT.md)**
+
+### Quick Start for Deployment:
+1. Complete one-time setup (GCP project, service account, GitHub secrets)
+2. Trigger deployment via GitHub Actions
+3. Access your game at the provided Cloud Run URL
+
+---
+
 ## How to Run the Multiplayer Game
 
 There are two ways to run the game: with Docker (recommended for a clean, isolated setup) or locally on your machine.

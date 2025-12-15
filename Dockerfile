@@ -14,7 +14,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Expose the port the application will run on
-EXPOSE 5501
+# Cloud Run will provide PORT env var, default to 8080
+EXPOSE 8080
 
 # Command to run the application
-CMD ["python", "server_multiship.py"]
+# Cloud Run requires binding to PORT environment variable
+CMD ["python", "start.py"]
